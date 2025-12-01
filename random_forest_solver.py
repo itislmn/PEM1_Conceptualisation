@@ -29,7 +29,7 @@ morphological_box = {
     "Interagierendes Element": ["Nadelstoß", "Hubmagnetelement", "Haftmittel", "Wrecking Ball", "Bogen", "Gummizug",
                                 "Seilzug", "Nockenmechanismus", "Vibration"],
     "Empfang Steins": ["Greifen und Legen", "Chute/Netz", "Eimer"],
-    "Steuerung": ["SOC", "FPGA", "Mikrokontroller", "Raspberry Pi"],
+    "Steuerung": ["SOC", "Mikrokontroller", "Raspberry Pi"],
     "Zustand Anzeige": ["LEDs", "Ton", "Display", "Anzeige auf Laptop", "Haptisch", "Serieller Monitor"],
 }
 
@@ -386,7 +386,7 @@ def build_dataset_a(n):
         rows.append(row)
 
     df = pd.DataFrame(rows)
-    df.to_csv("excel_list/dataset_a.csv", index=False)
+    df.to_csv("dataset_a.csv", index=False)
     return df
 
 # =====================================================
@@ -414,15 +414,15 @@ def build_dataset_b(num_to_generate=50):
         rows.append(row)
 
     df = pd.DataFrame(rows)
-    df.to_csv("excel_list/dataset_b.csv", index=False)
+    df.to_csv("dataset_b.csv", index=False)
     return df
 
 # =====================================================
 # === 9) TRAIN RANDOM FOREST ON BOTH DATASETS =========
 # =====================================================
 def train_random_forest():
-    df_a = pd.read_csv("excel_list/dataset_a.csv")
-    df_b = pd.read_csv("excel_list/dataset_b.csv")
+    df_a = pd.read_csv("dataset_a.csv")
+    df_b = pd.read_csv("dataset_b.csv")
 
     df = pd.concat([df_a, df_b], ignore_index=True)
 
@@ -461,7 +461,7 @@ def generate_best_solutions(model, columns, k=10):
 if __name__ == "__main__":
 
     print("Generating Dataset A...")
-    build_dataset_a(10**12)
+    build_dataset_a(10**6)
 
     print("Generate Dataset B now...")
     build_dataset_b(100)  # Uncomment to rate manually
@@ -469,7 +469,7 @@ if __name__ == "__main__":
     print("Training model...")
     model, cols = train_random_forest()
 
-    print("\nTop 5 predicted optimal solutions:")
+    print("\nTop 10 predicted optimal solutions:")
     best = generate_best_solutions(model, cols, k=10)
     for rank, (score, cost, sol) in enumerate(best, 1):
         print(f"\nRank {rank} — Predicted Score {score:.2f} — Cost: {cost} EUR")
