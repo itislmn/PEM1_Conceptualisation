@@ -455,27 +455,22 @@ def generate_best_solutions(model, columns, k=10):
 
     best = generate_best_solutions(model, cols, k=10)
 
-    for rank, (score, cost, sol) in enumerate(best, 1):
-        print(f"\nRank {rank} — Predicted Score {score:.2f} — Cost: {cost} EUR")
-        pprint(sol)
-
-
 # =====================================================
-# === 11) MAIN EXECUTION (example) =====================
+# === 11) MAIN EXECUTION =====================
 # =====================================================
 if __name__ == "__main__":
 
     print("Generating Dataset A...")
-    build_dataset_a(200)
+    build_dataset_a(10**12)
 
     print("Generate Dataset B now...")
-    build_dataset_b(20)  # Uncomment to rate manually
+    build_dataset_b(100)  # Uncomment to rate manually
 
     print("Training model...")
     model, cols = train_random_forest()
 
     print("\nTop 5 predicted optimal solutions:")
-    best = generate_best_solutions(model, cols, k=5)
-    for rank, (score, sol) in enumerate(best, 1):
-        print(f"\nRank {rank} — Predicted Score {score:.2f}")
+    best = generate_best_solutions(model, cols, k=10)
+    for rank, (score, cost, sol) in enumerate(best, 1):
+        print(f"\nRank {rank} — Predicted Score {score:.2f} — Cost: {cost} EUR")
         pprint(sol)
