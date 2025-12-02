@@ -202,7 +202,7 @@ rating_map["Datenübertragung"]["Bluetooth"] = {"adapt":3,"stab":3,"prec":3,"spe
 rating_map["Datenübertragung"]["LoRa"] = {"adapt":3,"stab":4,"prec":3,"speed":4}
 
 rating_map["Datenaufnahme TURM"]["Infrarot"] = {"adapt":3,"stab":5,"prec":3,"speed":5}
-rating_map["Datenaufnahme TURM"]["Kamera"] = {"adapt":4,"stab":5,"prec":5,"speed":2}
+rating_map["Datenaufnahme TURM"]["Kamera"] = {"adapt":5,"stab":5,"prec":5,"speed":2}
 rating_map["Datenaufnahme TURM"]["Näherungssensor"] = {"adapt":2,"stab":5,"prec":3,"speed":5}
 rating_map["Datenaufnahme TURM"]["Ultraschallsensor"] = {"adapt":3,"stab":5,"prec":3,"speed":3}
 rating_map["Datenaufnahme TURM"]["Drucksensor"] = {"adapt":1,"stab":5,"prec":4,"speed":5}
@@ -210,15 +210,15 @@ rating_map["Datenaufnahme TURM"]["Neigungssensor"] = {"adapt":4,"stab":5,"prec":
 rating_map["Datenaufnahme TURM"]["DMS"] = {"adapt":1,"stab":5,"prec":5,"speed":5}
 rating_map["Datenaufnahme TURM"]["IMU/Bewegungssensor"] = {"adapt":3,"stab":5,"prec":3,"speed":5}
 
-rating_map["Datenaufnahme STEIN"]["Kraftsensor"] = {"adapt":4,"stab":5,"prec":5,"speed":2}
-rating_map["Datenaufnahme STEIN"]["Kamera"] = {"adapt":4,"stab":5,"prec":5,"speed":2}
+rating_map["Datenaufnahme STEIN"]["Kraftsensor"] = {"adapt":4,"stab":5,"prec":5,"speed":4}
+rating_map["Datenaufnahme STEIN"]["Kamera"] = {"adapt":5,"stab":5,"prec":5,"speed":2}
 rating_map["Datenaufnahme STEIN"]["Infrarot"] = {"adapt":3,"stab":5,"prec":3,"speed":5}
 rating_map["Datenaufnahme STEIN"]["Näherungssensor"] = {"adapt":2,"stab":5,"prec":3,"speed":5}
 rating_map["Datenaufnahme STEIN"]["Ultraschallsensor"] = {"adapt":3,"stab":5,"prec":3,"speed":3}
-rating_map["Datenaufnahme STEIN"]["Computer Vision"] = {"adapt":4,"stab":5,"prec":5,"speed":2}
+rating_map["Datenaufnahme STEIN"]["Computer Vision"] = {"adapt":5,"stab":5,"prec":5,"speed":2}
 
 rating_map["Datenaufnahme AKTORPOSITION"]["Positionsgeber"] = {"adapt":4,"stab":5,"prec":4,"speed":5}
-rating_map["Datenaufnahme AKTORPOSITION"]["Kamera"] = {"adapt":4,"stab":5,"prec":5,"speed":2}
+rating_map["Datenaufnahme AKTORPOSITION"]["Kamera"] = {"adapt":5,"stab":5,"prec":5,"speed":2}
 rating_map["Datenaufnahme AKTORPOSITION"]["Infrarot"] = {"adapt":3,"stab":5,"prec":3,"speed":5}
 rating_map["Datenaufnahme AKTORPOSITION"]["Potentiometer"] = {"adapt":3,"stab":5,"prec":4,"speed":5}
 rating_map["Datenaufnahme AKTORPOSITION"]["Mikrotaster"] = {"adapt":3,"stab":5,"prec":5,"speed":4}
@@ -275,6 +275,11 @@ rating_map["Zustand Anzeige"]["Display"] = {"adapt":5,"stab":5,"prec":5,"speed":
 rating_map["Zustand Anzeige"]["Anzeige auf Laptop"] = {"adapt":5,"stab":5,"prec":5,"speed":5}
 rating_map["Zustand Anzeige"]["Haptisch"] = {"adapt":3,"stab":5,"prec":5,"speed":1}
 rating_map["Zustand Anzeige"]["Serieller Monitor"] = {"adapt":5,"stab":5,"prec":5,"speed":5}
+
+rating_map["Energieversorgung"]["Batterie"] = {"adapt":2,"stab":2,"prec":2,"speed":2}
+rating_map["Energieversorgung"]["Netzteil"] = {"adapt":5,"stab":5,"prec":5,"speed":5}
+rating_map["Energieversorgung"]["Solarzelle"] = {"adapt":3,"stab":3,"prec":3,"speed":3}
+
 # =====================================================
 # === 6) SCORING LOGIC FOR DATASET A ==================
 # =====================================================
@@ -439,21 +444,98 @@ def train_random_forest():
 # =====================================================
 # === 10) USE MODEL TO FIND BEST SOLUTIONS =============
 # =====================================================
-def generate_best_solutions(model, columns, k=10):
-    candidates = generate_n_valid_solutions(2000)
-    scored = []
+import heapq
+import numpy as np
+import pandas as pd
 
-    for sol in candidates:
-        df_temp = pd.DataFrame([sol])
-        df_temp = pd.get_dummies(df_temp)
-        df_temp = df_temp.reindex(columns=columns, fill_value=0)
+def generate_best_solutions(model, columns, k=10, total_candidates=10**7, batch_size=50000):
+    """
+    Fast Top-K search among millions/billions of candidates using:
+      - batched generation
+      - batched model prediction
+      - min-heap top-k tracking
+    """
 
-        pred = model.predict(df_temp)[0]
-        cost = calculate_total_cost(sol)
+    topk_heap = []  # store (score, cost, solution)
 
-        scored.append((pred, cost, sol))
+    num_batches = total_candidates // batch_size
 
-    best = generate_best_solutions(model, cols, k=10)
+    for batch_i in range(num_batches):
+
+        # === 1) Generate batch of candidates ===
+        batch_solutions = generate_n_valid_solutions(batch_size)
+
+        # === 2) Prepare batch DataFrame ===
+        df = pd.DataFrame(batch_solutions)
+        df = pd.get_dummies(df)
+        df = df.reindex(columns=columns, fill_value=0)
+
+        # === 3) Model prediction in batch (FAST) ===
+        preds = model.predict(df)
+
+        # === 4) Calculate cost in batch ===
+        costs = [
+            calculate_total_cost(sol, price_map, structure_mass_map, material_price_per_stange)
+            for sol in batch_solutions
+        ]
+
+        # === 5) Update top-k (min-heap) ===
+        for score, cost, sol in zip(preds, costs, batch_solutions):
+
+            if len(topk_heap) < k:
+                heapq.heappush(topk_heap, (score, cost, sol))
+            else:
+                if score > topk_heap[0][0]:  # compare with smallest in the heap
+                    heapq.heapreplace(topk_heap, (score, cost, sol))
+
+        print(f"Processed batch {batch_i+1}/{num_batches}", flush=True)
+
+    # === 6) Convert heap → sorted list (highest score first) ===
+    topk_sorted = sorted(topk_heap, key=lambda x: x[0], reverse=True)
+
+    return topk_sorted
+
+
+def build_best_rated_solution(rating_map):
+    """
+    Selects the best option from each category based on the sum of:
+    adapt + stab + prec + speed.
+    Returns a dict: {category: best_option}
+    """
+
+    best_solution = {}
+
+    for category, options in rating_map.items():
+
+        best_option = None
+        best_score = -1
+
+        for option_name, rating_dict in options.items():
+
+            # compute the option's total score
+            score = (
+                rating_dict.get("adapt", 0)
+                + rating_dict.get("stab", 0)
+                + rating_dict.get("prec", 0)
+                + rating_dict.get("speed", 0)
+            )
+
+            # keep the best
+            if score > best_score:
+                best_score = score
+                best_option = option_name
+
+        best_solution[category] = best_option
+
+    return best_solution
+
+def print_best_rated_solution(rating_map):
+    sol = build_best_rated_solution(rating_map)
+
+    print("\n=== BEST RATED SOLUTION (per category) ===")
+    for category, option in sol.items():
+        print(f"{category}:  →  {option}")
+
 
 # =====================================================
 # === 11) MAIN EXECUTION =====================
@@ -461,10 +543,10 @@ def generate_best_solutions(model, columns, k=10):
 if __name__ == "__main__":
 
     print("Generating Dataset A...")
-    build_dataset_a(10**6)
+    build_dataset_a(10**4)
 
     print("Generate Dataset B now...")
-    build_dataset_b(100)  # Uncomment to rate manually
+    build_dataset_b(5)  # Uncomment to rate manually
 
     print("Training model...")
     model, cols = train_random_forest()
@@ -474,3 +556,6 @@ if __name__ == "__main__":
     for rank, (score, cost, sol) in enumerate(best, 1):
         print(f"\nRank {rank} — Predicted Score {score:.2f} — Cost: {cost} EUR")
         pprint(sol)
+
+    print_best_rated_solution(rating_map)
+
